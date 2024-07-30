@@ -12,7 +12,7 @@ const TRAEFIK_SSL_PORT =
 const TRAEFIK_PORT = Number.parseInt(process.env.TRAEFIK_PORT ?? "", 10) || 80;
 
 export const initializeTraefik = async (enableDashboard = false) => {
-	const imageName = "traefik:v2.5";
+	const imageName = "traefik:v3.1";
 	const containerName = "dokploy-traefik";
 	const settings: CreateServiceOptions = {
 		Name: containerName,
@@ -49,10 +49,22 @@ export const initializeTraefik = async (enableDashboard = false) => {
 		},
 		EndpointSpec: {
 			Ports: [
+				// UDP required for HTTP3 to work
+				...(process.env.NODE_ENV === "production"
+					? [
+							{
+								TargetPort: 443,
+								PublishedPort: TRAEFIK_SSL_PORT,
+								PublishMode: "host" as const,
+								Protocol: "udp" as const,
+							},
+						]
+					: []),
 				{
 					TargetPort: 443,
 					PublishedPort: TRAEFIK_SSL_PORT,
 					PublishMode: "host",
+					Protocol: "tcp",
 				},
 				{
 					TargetPort: 80,
@@ -165,6 +177,10 @@ export const createDefaultTraefikConfig = () => {
 			websecure: {
 				address: `:${TRAEFIK_SSL_PORT}`,
 				...(process.env.NODE_ENV === "production" && {
+					// Enables Traefik's HTTP3 feature on the websecure entrypoint
+					http3: {
+						advertisedPort: TRAEFIK_SSL_PORT,
+					},
 					http: {
 						tls: {
 							certResolver: "letsencrypt",
